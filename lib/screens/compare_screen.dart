@@ -6,6 +6,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../models/compare_product.dart';
 import '../models/shop_platform.dart';
 import '../providers/compare_provider.dart';
+import '../services/product_compare_service.dart';
 import '../widgets/platform_avatar.dart';
 
 /// Màn hình So Sánh Sản Phẩm: dán link 1 sản phẩm -> liệt kê sản phẩm
@@ -39,7 +40,7 @@ class _CompareScreenState extends State<CompareScreen> {
     super.dispose();
   }
 
-  void _doSearch() {
+  void _doSearch() async {
     FocusScope.of(context).unfocus();
     if (_linkCtrl.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -48,7 +49,23 @@ class _CompareScreenState extends State<CompareScreen> {
       );
       return;
     }
-    context.read<CompareProvider>().search(_linkCtrl.text);
+    final provider = context.read<CompareProvider>();
+    await provider.search(_linkCtrl.text);
+    if (!mounted) return;
+    // Không đọc được tên từ link -> hỏi lại, không tìm bằng mã ID.
+    if (provider.needsKeyword && provider.pendingInfo != null) {
+      final confirmed = await showDialog<String>(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => _KeywordDialog(info: provider.pendingInfo!),
+      );
+      if (!mounted) return;
+      if (confirmed != null && confirmed.trim().isNotEmpty) {
+        await provider.confirmKeyword(confirmed.trim());
+      } else {
+        provider.cancelKeyword();
+      }
+    }
   }
 
   @override
@@ -175,28 +192,43 @@ class _ResultHeader extends StatelessWidget {
             state.platforms.length != ShopPlatform.values.length ? 1 : 0;
         return Padding(
           padding: const EdgeInsets.fromLTRB(12, 6, 12, 6),
-          child: Row(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Expanded(
-                child: Text(
-                  '${state.total} sản phẩm • ${state.sort.label}',
-                  style: TextStyle(
-                      color: Colors.grey.shade700, fontSize: 13),
-                ),
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      '${state.total} sản phẩm • ${state.sort.label}',
+                      style: TextStyle(
+                          color: Colors.grey.shade700, fontSize: 13),
+                    ),
+                  ),
+                  OutlinedButton.icon(
+                    onPressed: onFilter,
+                    icon: Badge(
+                      isLabelVisible: activeFilters > 0,
+                      child: const Icon(Icons.tune, size: 18),
+                    ),
+                    label: const Text('Lọc'),
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 14, vertical: 8),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12)),
+                    ),
+                  ),
+                ],
               ),
-              OutlinedButton.icon(
-                onPressed: onFilter,
-                icon: Badge(
-                  isLabelVisible: activeFilters > 0,
-                  child: const Icon(Icons.tune, size: 18),
-                ),
-                label: const Text('Lọc'),
-                style: OutlinedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 14, vertical: 8),
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12)),
-                ),
+              const SizedBox(height: 2),
+              Text(
+                'Kết quả cho: "${state.keyword}"',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                    color: Colors.grey.shade500,
+                    fontSize: 12,
+                    fontStyle: FontStyle.italic),
               ),
             ],
           ),
@@ -238,7 +270,8 @@ class _EmptyHint extends StatelessWidget {
               style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
           const SizedBox(height: 8),
           Text(
-            'Dán link 1 sản phẩm bất kỳ, app sẽ tìm các sản phẩm tương tự '
+            'Dán link (kể cả link rút gọn s.shopee.vn...) hoặc gõ tên 1 sản phẩm '
+            'bất kỳ, app sẽ tìm các sản phẩm tương tự '
             'trên Shopee, Lazada và TikTok, sắp xếp theo lượt bán.',
             textAlign: TextAlign.center,
             style: TextStyle(color: Colors.grey.shade600, fontSize: 14),
@@ -395,6 +428,83 @@ class _ProductCard extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// Dialog hỏi tên sản phẩm khi link chỉ chứa ID (vd link rút gọn mà
+/// trang đích render bằng JS, không đọc được tên).
+class _KeywordDialog extends StatefulWidget {
+  final ProductLinkInfo info;
+
+  const _KeywordDialog({required this.info});
+
+  @override
+  State<_KeywordDialog> createState() => _KeywordDialogState();
+}
+
+class _KeywordDialogState extends State<_KeywordDialog> {
+  late final TextEditingController _ctrl;
+
+  @override
+  void initState() {
+    super.initState();
+    // Prefill nếu có chữ đọc được, bỏ trống nếu toàn mã số.
+    final k = widget.info.keyword;
+    final numeric =
+        k.replaceAll(RegExp(r'[\s\-_.]+'), '').contains(RegExp(r'^\d+$'));
+    _ctrl = TextEditingController(text: numeric ? '' : k);
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final info = widget.info;
+    final detail = [
+      if (info.platform != null) info.platform!.label,
+      if (info.shopId != null) 'Shop $info.shopId',
+      if (info.itemId != null) 'SP $info.itemId',
+    ].join(' • ');
+    return AlertDialog(
+      title: const Text('Nhập tên sản phẩm'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Link này không đọc được tên trực tiếp'
+            '${detail.isEmpty ? '' : ' ($detail)'}. '
+            'Nhập tên để tìm sản phẩm tương tự:',
+            style: const TextStyle(fontSize: 14),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _ctrl,
+            autofocus: true,
+            textInputAction: TextInputAction.search,
+            onSubmitted: (v) => Navigator.pop(context, v),
+            decoration: const InputDecoration(
+              hintText: 'VD: áo thun nam cotton',
+              prefixIcon: Icon(Icons.edit_outlined),
+            ),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Hủy'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.pop(context, _ctrl.text),
+          child: const Text('Tìm kiếm'),
+        ),
+      ],
     );
   }
 }

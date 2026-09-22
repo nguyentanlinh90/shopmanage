@@ -32,17 +32,58 @@ class CompareProvider extends ChangeNotifier {
   Set<ShopPlatform> get platforms => Set.unmodifiable(_platforms);
   bool get hasMore => _searched && _items.length < _total;
 
+  /// true khi resolve xong mà không đọc được tên -> UI hỏi lại người dùng.
+  bool _needsKeyword = false;
+  ProductLinkInfo? _pendingInfo;
+  bool get needsKeyword => _needsKeyword;
+  ProductLinkInfo? get pendingInfo => _pendingInfo;
+
   /// Bắt đầu tìm kiếm mới từ link / từ khóa người dùng nhập.
+  /// Link rút gọn (s.shopee.vn...) được resolve ra tên sản phẩm thật trước.
+  /// Nếu không đọc được tên (chỉ có ID) -> dừng lại, đặt needsKeyword
+  /// để UI hỏi tên, KHÔNG tìm bằng mã ID.
   Future<void> search(String input) async {
-    final info = parseProductLink(input);
-    if (info.keyword.isEmpty) return;
-    _keyword = info.keyword;
-    _sourcePlatform = info.platform;
+    if (input.trim().isEmpty) return;
+    _items.clear();
+    _page = 0;
+    _total = 0;
+    _searched = false;
+    _needsKeyword = false;
+    _pendingInfo = null;
+    _loading = true;
+    _loadingMore = false;
+    notifyListeners();
+
+    // Resolve link rút gọn -> tên sản phẩm (có gọi mạng, tối đa ~18s).
+    final info = await resolveLinkInfo(input);
+    if (info.keyword.isEmpty) {
+      _loading = false;
+      notifyListeners();
+      return;
+    }
+    if (info.keywordUncertain) {
+      _loading = false;
+      _needsKeyword = true;
+      _pendingInfo = info;
+      notifyListeners();
+      return;
+    }
+    await searchResolved(keyword: info.keyword, source: info.platform);
+  }
+
+  /// Chạy tìm kiếm với từ khóa đã chốt (từ link hoặc user nhập tay).
+  Future<void> searchResolved(
+      {required String keyword, ShopPlatform? source}) async {
+    _keyword = keyword;
+    _sourcePlatform = source;
     _items.clear();
     _page = 0;
     _total = 0;
     _searched = true;
+    _needsKeyword = false;
+    _pendingInfo = null;
     _loading = true;
+    _loadingMore = false;
     notifyListeners();
 
     final result = await _service.search(
@@ -56,6 +97,17 @@ class CompareProvider extends ChangeNotifier {
     _total = result.total;
     _page = 1;
     _loading = false;
+    notifyListeners();
+  }
+
+  /// User xác nhận tên sản phẩm sau dialog hỏi lại.
+  Future<void> confirmKeyword(String keyword) =>
+      searchResolved(keyword: keyword, source: _pendingInfo?.platform);
+
+  /// User hủy dialog hỏi tên.
+  void cancelKeyword() {
+    _needsKeyword = false;
+    _pendingInfo = null;
     notifyListeners();
   }
 
