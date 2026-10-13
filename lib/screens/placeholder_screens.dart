@@ -53,20 +53,6 @@ class HomeScreen extends StatelessWidget {
   }
 }
 
-class ProductScreen extends StatelessWidget {
-  const ProductScreen({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return const EmptyPlaceholder(
-      icon: Icons.inventory_2_outlined,
-      title: 'Sản Phẩm',
-      message:
-          'Quản lý sản phẩm (đồng bộ, tồn kho, giá) sẽ được phát triển sau.',
-    );
-  }
-}
-
 class OrderScreen extends StatelessWidget {
   const OrderScreen({super.key});
 

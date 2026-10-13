@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import 'providers/compare_provider.dart';
+import 'providers/product_provider.dart';
 import 'providers/shop_provider.dart';
 import 'screens/main_shell.dart';
 import 'screens/shopee_connect_screen.dart';
@@ -26,6 +27,10 @@ class ShopManageApp extends StatelessWidget {
       providers: [
         ChangeNotifierProvider.value(value: shopProvider),
         ChangeNotifierProvider(create: (_) => CompareProvider()),
+        ChangeNotifierProxyProvider<ShopProvider, ProductProvider>(
+          create: (_) => ProductProvider(),
+          update: (_, shops, products) => products!..updateShops(shops),
+        ),
       ],
       child: MaterialApp(
         title: 'Shop Manage',

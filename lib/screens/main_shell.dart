@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'account_screen.dart';
 import 'placeholder_screens.dart';
+import 'product_screen.dart';
 
 /// Khung chính với 4 menu bottom: Trang Chủ / Sản Phẩm / Đơn Hàng / Tài Khoản.
 class MainShell extends StatefulWidget {

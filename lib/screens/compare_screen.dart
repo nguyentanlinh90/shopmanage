@@ -540,15 +540,23 @@ class _FilterSheetState extends State<_FilterSheet> {
           children: [
             const Text('Sắp xếp',
                 style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
-            for (final s in CompareSort.values)
-              RadioListTile<CompareSort>(
-                value: s,
-                groupValue: _sort,
-                dense: true,
-                contentPadding: EdgeInsets.zero,
-                title: Text(s.label, style: const TextStyle(fontSize: 14)),
-                onChanged: (v) => setState(() => _sort = v!),
+            RadioGroup<CompareSort>(
+              groupValue: _sort,
+              onChanged: (v) => setState(() => _sort = v!),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  for (final s in CompareSort.values)
+                    RadioListTile<CompareSort>(
+                      value: s,
+                      dense: true,
+                      contentPadding: EdgeInsets.zero,
+                      title: Text(s.label,
+                          style: const TextStyle(fontSize: 14)),
+                    ),
+                ],
               ),
+            ),
             const Divider(),
             const Text('Sàn áp dụng',
                 style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
